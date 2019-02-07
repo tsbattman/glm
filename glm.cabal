@@ -1,0 +1,57 @@
+name:                glm
+version:             0.1.0.0
+-- synopsis:
+-- description:
+-- bug-reports:
+license:             GPL-2
+license-file:        LICENSE
+author:              Thayne Batty
+maintainer:          tsbattman@gmail.com
+-- copyright:
+-- category:
+build-type:          Simple
+extra-source-files:  CHANGELOG.md, README.md
+cabal-version:       >=1.10
+
+library
+  exposed-modules:
+      Statistics.Models.Linear.Generalized.Fit
+      Statistics.Models.Linear.Generalized.Types
+  -- other-modules:
+  -- other-extensions:
+  build-depends:
+      base >=4.12 && <4.13
+    , dense-linear-algebra >= 0.1
+    , math-functions >= 0.2
+    , statistics >= 0.15
+    , vector >= 0.12
+  hs-source-dirs: src
+  default-language:    Haskell2010
+  ghc-options: -Wall -Wcompat -Wredundant-constraints -Wincomplete-record-updates -Wincomplete-uni-patterns
+    -Widentities -Wmissing-export-lists -Wpartial-fields -fhide-source-paths
+    -O2
+
+executable glm
+  main-is:             Main.hs
+  -- other-modules:
+  -- other-extensions:
+  build-depends:       base >=4.12 && <4.13
+  -- hs-source-dirs:
+  default-language:    Haskell2010
+
+test-suite test-glm
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Main.hs
+  other-modules:
+      Binomial
+  build-depends:
+      base >=4.9 && < 5.0
+    , dense-linear-algebra >= 0.1
+    , statistics >= 0.15
+    , tasty >= 0.11
+    , tasty-hunit >= 0.09
+    , vector >= 0.12
+    , glm
+  default-language:    Haskell2010
+  ghc-options: -O2 -Wall -Wcompat -Wredundant-constraints -Wincomplete-record-updates -Wincomplete-uni-patterns
