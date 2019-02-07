@@ -1,9 +1,11 @@
 
 module Statistics.Models.Linear.Generalized.Fit (
     GLMData(..)
+  , equalWeightData
   , GLMIter(..)
   , glmIterate
   , glmFit
+  , glm
   ) where
 
 import Numeric.Sum (kbn, sumVector)
@@ -19,6 +21,14 @@ data GLMData = GLMData {
   , glmWt :: Vector
   , glmFamily :: Family
   }
+
+equalWeightData :: Family -> Matrix -> Vector -> Maybe GLMData
+equalWeightData fam x y
+  | n == nr = Just $ GLMData y x (VU.replicate n 1) fam
+  | otherwise = Nothing
+  where
+    (nr, _) = dimension x
+    n = VU.length y
 
 data GLMControl = GLMControl {
     glmControlEpsilon :: {-# UNPACK #-}!Double
@@ -91,12 +101,8 @@ glmIterate dat = iterate (glmIter dat) (GLMIter mu eta (VU.replicate n 0.0) dev)
     mu = VU.map linvf eta
     dev = devResiduals fam y mu wt
 
-glmFit :: Family -> Matrix -> Vector -> Vector
-glmFit = glmFitControl dfltGLMControl
+glmFit :: Family -> Matrix -> Vector -> Maybe Vector
+glmFit fam x y = glm dfltGLMControl <$> equalWeightData fam x y
 
-glmFitControl :: GLMControl -> Family -> Matrix -> Vector -> Vector
-glmFitControl contr fam x y = runLoop contr . take (glmControlMaxIt contr) $ glmIterate dat
-  where
-    n = VU.length y
-    wt = VU.replicate n 1.0
-    dat = GLMData y x wt fam
+glm :: GLMControl -> GLMData -> Vector
+glm contr = runLoop contr . take (glmControlMaxIt contr) . glmIterate

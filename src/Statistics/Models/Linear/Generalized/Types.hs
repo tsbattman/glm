@@ -1,7 +1,7 @@
 
 module Statistics.Models.Linear.Generalized.Types (
     Family(..)
-  , binomialFamily
+  , binomialFamily, gaussianFamily, poissonFamily
   , Link(..)
   , linkLogit, linkProbit, linkCauchit, linkCloglog
   , linkIdentity, linkLog, linkSqrt, linkInvSq, linkInverse
@@ -26,7 +26,7 @@ data Family = Family {
 ylogy :: Double -> Double -> Double
 ylogy y mu = if y /= 0 then y * log (y / mu) else 0
 
-binomialFamily :: Link -> Family
+binomialFamily, gaussianFamily, poissonFamily :: Link -> Family
 binomialFamily lnk = Family {
     familyName = "binomial"
   , familyLink = lnk
@@ -34,6 +34,22 @@ binomialFamily lnk = Family {
   , familyDevResid = \y mu wt -> 2 * wt * (ylogy y mu + ylogy (1 - y) (1 - mu))
   , familyValidMu = \mu -> isFinite mu && 0 < mu && mu < 1
   , familyInitialize = \y wt -> (y * wt + 0.5) / (wt + 1)
+  }
+gaussianFamily lnk = Family {
+    familyName = "gaussian"
+  , familyLink = lnk
+  , familyVariance = const 1.0
+  , familyDevResid = \y mu wt -> wt * sq (y - mu)
+  , familyValidMu = \mu -> isFinite mu && 0 < mu
+  , familyInitialize = \y _wt -> y
+  }
+poissonFamily lnk = Family {
+    familyName = "poisson"
+  , familyLink = lnk
+  , familyVariance = id
+  , familyDevResid = \y mu wt -> if y == 0 then wt * mu else 2 * wt * (ylogy y mu - (y - mu))
+  , familyValidMu = \mu -> isFinite mu && 0 < mu
+  , familyInitialize = \y _wt -> y + 0.1
   }
 
 data Link = Link {
