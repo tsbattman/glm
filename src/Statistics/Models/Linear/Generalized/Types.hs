@@ -1,7 +1,7 @@
 
 module Statistics.Models.Linear.Generalized.Types (
     Family(..)
-  , binomialFamily, gaussianFamily, poissonFamily
+  , familyBinomial, familyGaussian, familyPoisson
   , Link(..)
   , linkLogit, linkProbit, linkCauchit, linkCloglog
   , linkIdentity, linkLog, linkSqrt, linkInvSq, linkInverse
@@ -26,8 +26,8 @@ data Family = Family {
 ylogy :: Double -> Double -> Double
 ylogy y mu = if y /= 0 then y * log (y / mu) else 0
 
-binomialFamily, gaussianFamily, poissonFamily :: Link -> Family
-binomialFamily lnk = Family {
+familyBinomial, familyGaussian, familyPoisson :: Link -> Family
+familyBinomial lnk = Family {
     familyName = "binomial"
   , familyLink = lnk
   , familyVariance = \mu -> mu * (1 - mu)
@@ -35,7 +35,7 @@ binomialFamily lnk = Family {
   , familyValidMu = \mu -> isFinite mu && 0 < mu && mu < 1
   , familyInitialize = \y wt -> (y * wt + 0.5) / (wt + 1)
   }
-gaussianFamily lnk = Family {
+familyGaussian lnk = Family {
     familyName = "gaussian"
   , familyLink = lnk
   , familyVariance = const 1.0
@@ -43,7 +43,7 @@ gaussianFamily lnk = Family {
   , familyValidMu = \mu -> isFinite mu && 0 < mu
   , familyInitialize = \y _wt -> y
   }
-poissonFamily lnk = Family {
+familyPoisson lnk = Family {
     familyName = "poisson"
   , familyLink = lnk
   , familyVariance = id

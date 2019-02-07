@@ -24,7 +24,7 @@ random1 = assertBool "" $ maybe False (veq 1e-4 ans) b
       , glmWt = VU.replicate 4 1
       , glmFamily = fam
       }
-    fam = binomialFamily linkLogit
+    fam = familyBinomial linkLogit
     x = fromList 4 3 [
         1, -0.13085361, 0.2403199
       , 1,  1.25961852, 0.3239020
@@ -46,7 +46,7 @@ example1 = assertBool "" $ maybe False (veq 1e-4 ans) b
       _ -> error "bad dimension"
     numdead = VU.fromList [1, 4, 9, 13, 18, 20, 0, 2, 6, 10, 12, 16]
     y = VU.map (/ 20.0) numdead
-    b = glmFit (binomialFamily linkLogit) x y
+    b = glmFit (familyBinomial linkLogit) x y
     ans = VU.fromList [-2.9935418, 0.1749868, 0.9060364, 0.3529130]
 
 testBinomial :: TestTree
