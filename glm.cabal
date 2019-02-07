@@ -31,14 +31,6 @@ library
     -Widentities -Wmissing-export-lists -Wpartial-fields -fhide-source-paths
     -O2
 
-executable glm
-  main-is:             Main.hs
-  -- other-modules:
-  -- other-extensions:
-  build-depends:       base >=4.12 && <4.13
-  -- hs-source-dirs:
-  default-language:    Haskell2010
-
 test-suite test-glm
   type: exitcode-stdio-1.0
   hs-source-dirs: test
