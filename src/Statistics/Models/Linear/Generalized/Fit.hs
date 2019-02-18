@@ -56,29 +56,41 @@ rowScale :: Matrix -> Vector -> Matrix
 rowScale m0 v = generate nr nc $ \i j -> unsafeIndex m0 i j * v VU.! i
   where (nr, nc) = dimension m0
 
-devResiduals :: Family -> Vector -> Vector -> Vector -> Double
-devResiduals fam y mu wt = sumVector kbn $ VU.zipWith3 devresid y mu wt
+devResiduals :: GLMData -> Vector -> Double
+devResiduals (GLMData y _x wt fam) mu = sumVector kbn $ VU.zipWith3 devresid y mu wt
   where devresid = familyDevResid fam
 
+glmStepValidate :: GLMData -> Vector -> Vector -> GLMIter
+glmStepValidate dat@(GLMData _y x _wt fam) coef0 start
+  | not (isFinite dev) = glmStepValidate dat coef0 midp
+  | not (VU.all valideta eta1 && VU.all validmu mu1) = glmStepValidate dat coef0 midp
+  | otherwise = GLMIter {
+      glmIterEta = eta1
+    , glmIterMu = mu1
+    , glmIterCoef = start
+    , glmIterDev = dev
+    }
+  where
+    lnk = familyLink fam
+    validmu = familyValidMu fam
+    valideta = linkValidEta lnk
+    linvf = linkInv lnk
+    eta1 = x `multiplyV` start
+    mu1 = VU.map linvf eta1
+    dev = devResiduals dat mu1
+    midp = VU.zipWith (\si ci -> (si + ci) / 2) start coef0
+
 glmIter :: GLMData -> GLMIter -> GLMIter
-glmIter (GLMData y x wt fam) (GLMIter mu0 eta0 _coef0 _dev0) = GLMIter {
-    glmIterEta = eta1
-  , glmIterMu = mu1
-  , glmIterCoef = start
-  , glmIterDev = devResiduals fam y mu1 wt
-  }
+glmIter dat@(GLMData y x wt fam) (GLMIter mu0 eta0 coef0 _dev0) = glmStepValidate dat coef0 start
   where
     varf = familyVariance fam
     lnk = familyLink fam
     dmudeta = linkDmuDeta lnk
-    linvf = linkInv lnk
     -- varmu = VU.map varf mu0
     mueta = VU.map dmudeta eta0
     z = VU.zipWith4 (\yi mui etai muetai -> etai + (yi - mui) / muetai) y mu0 eta0 mueta
     w = VU.zipWith3 (\wi muetai mui -> sqrt $ (wi * sq muetai) / varf mui) wt mueta mu0
     start = ols (rowScale x w) (VU.zipWith (*) z w)
-    eta1 = x `multiplyV` start
-    mu1 = VU.map linvf eta1
 
 runLoop :: GLMControl -> [GLMIter] -> Vector
 runLoop _ [] = VU.empty
@@ -99,7 +111,7 @@ glmIterate dat = iterate (glmIter dat) (GLMIter mu eta (VU.replicate n 0.0) dev)
     mustart = VU.zipWith (familyInitialize fam) y wt
     eta = VU.map lnkf mustart
     mu = VU.map linvf eta
-    dev = devResiduals fam y mu wt
+    dev = devResiduals dat mu
 
 glmFit :: Family -> Matrix -> Vector -> Maybe Vector
 glmFit fam x y = glm dfltGLMControl <$> equalWeightData fam x y
