@@ -20,7 +20,7 @@ library
   -- other-modules:
   -- other-extensions:
   build-depends:
-      base >=4.12 && <4.13
+      base >=4.11 && <4.13
     , dense-linear-algebra >= 0.1
     , math-functions >= 0.2
     , statistics >= 0.15
