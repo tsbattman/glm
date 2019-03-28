@@ -41,7 +41,7 @@ familyGaussian lnk = Family {
   , familyVariance = const 1.0
   , familyDevResid = \y mu wt -> wt * sq (y - mu)
   , familyValidMu = \mu -> isFinite mu && 0 < mu
-  , familyInitialize = \y _wt -> y
+  , familyInitialize = const
   }
 familyPoisson lnk = Family {
     familyName = "poisson"
@@ -119,7 +119,7 @@ linkSqrt = Link {
 linkInvSq = Link {
     linkName = "1/mu^2"
   , linkFun = \mu -> recip $ mu * mu
-  , linkInv = \eta -> recip $ sqrt eta
+  , linkInv = recip . sqrt
   , linkDmuDeta = \eta -> negate . recip $ 2 * eta * sqrt eta
   , linkValidEta = \eta -> isFinite eta && eta > 0
   }

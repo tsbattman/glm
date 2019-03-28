@@ -2,6 +2,8 @@
 module Statistics.Models.Linear.Generalized.Fit (
     GLMData(..)
   , equalWeightData
+  , GLMControl(..)
+  , dfltGLMControl
   , GLMIter(..)
   , glmIterate
   , glmFit
@@ -94,7 +96,7 @@ glmIter dat@(GLMData y x wt fam) (GLMIter mu0 eta0 coef0 _dev0) = glmStepValidat
 
 runLoop :: GLMControl -> [GLMIter] -> Vector
 runLoop _ [] = VU.empty
-runLoop _ (it0:[]) = glmIterCoef it0
+runLoop _ [it0] = glmIterCoef it0
 runLoop contr (it0:it1:ls) = if glmIterBreak contr it0 it1
   then glmIterCoef it1
   else runLoop contr (it1:ls)
