@@ -8,6 +8,8 @@ module Statistics.Models.Linear.Generalized.Fit (
   , glmIterate
   , glmFit
   , glm
+  , glmEvalLink
+  , glmEvalResponse
   ) where
 
 import Numeric.Sum (kbn, sumVector)
@@ -49,6 +51,7 @@ data GLMIter = GLMIter {
 
 glmIterBreak :: GLMControl -> GLMIter -> GLMIter -> Bool
 glmIterBreak control g0 g1 = abs (dev1 - dev0) / (0.1 + abs dev1) < eps
+  || VU.any (not . isFinite) (glmIterCoef g1)
   where
     dev1 = glmIterDev g1
     dev0 = glmIterDev g0
@@ -83,7 +86,8 @@ glmStepValidate dat@(GLMData _y x _wt fam) coef0 start
     midp = VU.zipWith (\si ci -> (si + ci) / 2) start coef0
 
 glmIter :: GLMData -> GLMIter -> GLMIter
-glmIter dat@(GLMData y x wt fam) (GLMIter mu0 eta0 coef0 _dev0) = glmStepValidate dat coef0 start
+glmIter dat@(GLMData y x wt fam) (GLMIter mu0 eta0 coef0 _dev0) = glmStepValidate dat coef0
+  $ ols (rowScale x w) (VU.zipWith (*) z w)
   where
     varf = familyVariance fam
     lnk = familyLink fam
@@ -92,7 +96,6 @@ glmIter dat@(GLMData y x wt fam) (GLMIter mu0 eta0 coef0 _dev0) = glmStepValidat
     mueta = VU.map dmudeta eta0
     z = VU.zipWith4 (\yi mui etai muetai -> etai + (yi - mui) / muetai) y mu0 eta0 mueta
     w = VU.zipWith3 (\wi muetai mui -> sqrt $ (wi * sq muetai) / varf mui) wt mueta mu0
-    start = ols (rowScale x w) (VU.zipWith (*) z w)
 
 runLoop :: GLMControl -> [GLMIter] -> Vector
 runLoop _ [] = VU.empty
@@ -120,3 +123,9 @@ glmFit fam x y = glm dfltGLMControl <$> equalWeightData fam x y
 
 glm :: GLMControl -> GLMData -> Vector
 glm contr = runLoop contr . take (glmControlMaxIt contr) . glmIterate
+
+glmEvalLink :: Vector -> Vector -> Double
+glmEvalLink a = VU.sum . VU.zipWith(*) a
+
+glmEvalResponse :: Link -> Vector -> Vector -> Double
+glmEvalResponse lnk x = linkInv lnk . glmEvalLink x
