@@ -46,4 +46,6 @@ test-suite test-glm
     , vector >= 0.12
     , glm
   default-language:    Haskell2010
-  ghc-options: -O2 -Wall -Wcompat -Wredundant-constraints -Wincomplete-record-updates -Wincomplete-uni-patterns
+  ghc-options: -Wall -Wcompat -Wredundant-constraints -Wincomplete-record-updates -Wincomplete-uni-patterns
+    -Widentities -Wmissing-export-lists -Wpartial-fields -fhide-source-paths
+    -O2

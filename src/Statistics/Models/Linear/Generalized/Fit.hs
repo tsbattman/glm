@@ -12,10 +12,13 @@ module Statistics.Models.Linear.Generalized.Fit (
   , glmEvalResponse
   ) where
 
+import Control.Monad (forM_)
+
 import Numeric.Sum (kbn, sumVector)
-import Statistics.Matrix (Matrix, Vector, dimension, generate, multiplyV, unsafeIndex)
-import Statistics.Regression (ols)
+import Statistics.Matrix (Matrix(..), Vector, dimension, generate, multiplyV, transpose, unsafeIndex)
+import Statistics.Matrix.Algorithms (qr)
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as MVU
 
 import Statistics.Models.Linear.Generalized.Types
 
@@ -85,9 +88,30 @@ glmStepValidate dat@(GLMData _y x _wt fam) coef0 start
     dev = devResiduals dat mu1
     midp = VU.zipWith (\si ci -> (si + ci) / 2) start coef0
 
+qrls :: Matrix -> Vector -> Vector
+qrls a b = uptriSolve r $ transpose q `multiplyV` b
+  where (q, r) = qr a
+
+uptriSolve :: Matrix -> Vector -> Vector
+uptriSolve r b = VU.create $ do
+  s <- VU.thaw b
+  forM_ (reverse [0 .. n - 1]) $ \i ->
+    let denom = unsafeIndex r i i
+    in if denom <= tol
+    then MVU.unsafeWrite s i 0
+    else do
+      si <- (/ denom) <$> MVU.unsafeRead s i
+      MVU.unsafeWrite s i si
+      forM_ [0 .. (i - 1)] $ \j -> unsafeModify s j $ subtract (unsafeIndex r j i * si)
+  return s
+  where
+    unsafeModify v i f = MVU.unsafeRead v i >>= MVU.unsafeWrite v i . f
+    tol = 1e-7
+    n = rows r
+
 glmIter :: GLMData -> GLMIter -> GLMIter
 glmIter dat@(GLMData y x wt fam) (GLMIter mu0 eta0 coef0 _dev0) = glmStepValidate dat coef0
-  $ ols (rowScale x w) (VU.zipWith (*) z w)
+  $ qrls (rowScale x w) (VU.zipWith (*) z w)
   where
     varf = familyVariance fam
     lnk = familyLink fam
@@ -105,9 +129,9 @@ runLoop contr (it0:it1:ls) = if glmIterBreak contr it0 it1
   else runLoop contr (it1:ls)
 
 glmIterate :: GLMData -> [GLMIter]
-glmIterate dat = iterate (glmIter dat) (GLMIter mu eta (VU.replicate n 0.0) dev)
+glmIterate dat = iterate (glmIter dat) (GLMIter mu eta (VU.replicate m 0.0) dev)
   where
-    n = VU.length y
+    m = cols (glmX dat)
     y = glmY dat
     wt = glmWt dat
     fam = glmFamily dat
