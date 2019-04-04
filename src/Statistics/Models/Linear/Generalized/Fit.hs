@@ -12,30 +12,26 @@ module Statistics.Models.Linear.Generalized.Fit (
   , glmEvalResponse
   ) where
 
-import Control.Monad (forM_)
-
 import Numeric.Sum (kbn, sumVector)
-import Statistics.Matrix (Matrix(..), Vector, dimension, generate, multiplyV, transpose, unsafeIndex)
-import Statistics.Matrix.Algorithms (qr)
-import qualified Data.Vector.Unboxed as VU
-import qualified Data.Vector.Unboxed.Mutable as MVU
+import Numeric.LinearAlgebra ((#>), Matrix, Vector, asColumn, cmap, cols, flatten, konst, linearSolveSVD, rows, size)
+import qualified Data.Vector.Storable as VS
 
 import Statistics.Models.Linear.Generalized.Types
 
 data GLMData = GLMData {
-    glmY :: Vector
-  , glmX :: Matrix
-  , glmWt :: Vector
+    glmY :: Vector Double
+  , glmX :: Matrix Double
+  , glmWt :: Vector Double
   , glmFamily :: Family
   }
 
-equalWeightData :: Family -> Matrix -> Vector -> Maybe GLMData
+equalWeightData :: Family -> Matrix Double -> Vector Double -> Maybe GLMData
 equalWeightData fam x y
-  | n == nr = Just $ GLMData y x (VU.replicate n 1) fam
+  | n == nr = Just $ GLMData y x (konst 1 n) fam
   | otherwise = Nothing
   where
-    (nr, _) = dimension x
-    n = VU.length y
+    nr = rows x
+    n = size y
 
 data GLMControl = GLMControl {
     glmControlEpsilon :: {-# UNPACK #-}!Double
@@ -46,32 +42,28 @@ dfltGLMControl :: GLMControl
 dfltGLMControl = GLMControl 1e-8 25
 
 data GLMIter = GLMIter {
-    glmIterMu :: Vector
-  , glmIterEta :: Vector
-  , glmIterCoef :: Vector
+    glmIterMu :: Vector Double
+  , glmIterEta :: Vector Double
+  , glmIterCoef :: Vector Double
   , glmIterDev :: {-# UNPACK #-} !Double
   } deriving (Eq, Show, Read)
 
 glmIterBreak :: GLMControl -> GLMIter -> GLMIter -> Bool
 glmIterBreak control g0 g1 = abs (dev1 - dev0) / (0.1 + abs dev1) < eps
-  || VU.any (not . isFinite) (glmIterCoef g1)
+  || VS.any (not . isFinite) (glmIterCoef g1)
   where
     dev1 = glmIterDev g1
     dev0 = glmIterDev g0
     eps = glmControlEpsilon control
 
-rowScale :: Matrix -> Vector -> Matrix
-rowScale m0 v = generate nr nc $ \i j -> unsafeIndex m0 i j * v VU.! i
-  where (nr, nc) = dimension m0
-
-devResiduals :: GLMData -> Vector -> Double
-devResiduals (GLMData y _x wt fam) mu = sumVector kbn $ VU.zipWith3 devresid y mu wt
+devResiduals :: GLMData -> Vector Double -> Double
+devResiduals (GLMData y _x wt fam) mu = sumVector kbn $ VS.zipWith3 devresid y mu wt
   where devresid = familyDevResid fam
 
-glmStepValidate :: GLMData -> Vector -> Vector -> GLMIter
+glmStepValidate :: GLMData -> Vector Double -> Vector Double -> GLMIter
 glmStepValidate dat@(GLMData _y x _wt fam) coef0 start
   | not (isFinite dev) = glmStepValidate dat coef0 midp
-  | not (VU.all valideta eta1 && VU.all validmu mu1) = glmStepValidate dat coef0 midp
+  | not (VS.all valideta eta1 && VS.all validmu mu1) = glmStepValidate dat coef0 midp
   | otherwise = GLMIter {
       glmIterEta = eta1
     , glmIterMu = mu1
@@ -83,53 +75,33 @@ glmStepValidate dat@(GLMData _y x _wt fam) coef0 start
     validmu = familyValidMu fam
     valideta = linkValidEta lnk
     linvf = linkInv lnk
-    eta1 = x `multiplyV` start
-    mu1 = VU.map linvf eta1
+    eta1 = x #> start
+    mu1 = cmap linvf eta1
     dev = devResiduals dat mu1
-    midp = VU.zipWith (\si ci -> (si + ci) / 2) start coef0
-
-qrls :: Matrix -> Vector -> Vector
-qrls a b = uptriSolve r $ transpose q `multiplyV` b
-  where (q, r) = qr a
-
-uptriSolve :: Matrix -> Vector -> Vector
-uptriSolve r b = VU.create $ do
-  s <- VU.thaw b
-  forM_ (reverse [0 .. n - 1]) $ \i ->
-    let denom = unsafeIndex r i i
-    in if denom <= tol
-    then MVU.unsafeWrite s i 0
-    else do
-      si <- (/ denom) <$> MVU.unsafeRead s i
-      MVU.unsafeWrite s i si
-      forM_ [0 .. (i - 1)] $ \j -> unsafeModify s j $ subtract (unsafeIndex r j i * si)
-  return s
-  where
-    unsafeModify v i f = MVU.unsafeRead v i >>= MVU.unsafeWrite v i . f
-    tol = 1e-7
-    n = rows r
+    midp = VS.zipWith (\si ci -> (si + ci) / 2) start coef0
 
 glmIter :: GLMData -> GLMIter -> GLMIter
 glmIter dat@(GLMData y x wt fam) (GLMIter mu0 eta0 coef0 _dev0) = glmStepValidate dat coef0
-  $ qrls (rowScale x w) (VU.zipWith (*) z w)
+  . flatten
+  $ linearSolveSVD (x * asColumn w) (asColumn (z * w))
   where
     varf = familyVariance fam
     lnk = familyLink fam
     dmudeta = linkDmuDeta lnk
     -- varmu = VU.map varf mu0
-    mueta = VU.map dmudeta eta0
-    z = VU.zipWith4 (\yi mui etai muetai -> etai + (yi - mui) / muetai) y mu0 eta0 mueta
-    w = VU.zipWith3 (\wi muetai mui -> sqrt $ (wi * sq muetai) / varf mui) wt mueta mu0
+    mueta = cmap dmudeta eta0
+    z = VS.zipWith4 (\yi mui etai muetai -> etai + (yi - mui) / muetai) y mu0 eta0 mueta
+    w = VS.zipWith3 (\wi muetai mui -> sqrt $ (wi * sq muetai) / varf mui) wt mueta mu0
 
-runLoop :: GLMControl -> [GLMIter] -> Vector
-runLoop _ [] = VU.empty
+runLoop :: GLMControl -> [GLMIter] -> Vector Double
+runLoop _ [] = VS.empty
 runLoop _ [it0] = glmIterCoef it0
 runLoop contr (it0:it1:ls) = if glmIterBreak contr it0 it1
   then glmIterCoef it1
   else runLoop contr (it1:ls)
 
 glmIterate :: GLMData -> [GLMIter]
-glmIterate dat = iterate (glmIter dat) (GLMIter mu eta (VU.replicate m 0.0) dev)
+glmIterate dat = iterate (glmIter dat) (GLMIter mu eta (konst 0.0 m) dev)
   where
     m = cols (glmX dat)
     y = glmY dat
@@ -137,19 +109,19 @@ glmIterate dat = iterate (glmIter dat) (GLMIter mu eta (VU.replicate m 0.0) dev)
     fam = glmFamily dat
     lnkf = linkFun $ familyLink fam
     linvf = linkInv $ familyLink fam
-    mustart = VU.zipWith (familyInitialize fam) y wt
-    eta = VU.map lnkf mustart
-    mu = VU.map linvf eta
+    mustart = VS.zipWith (familyInitialize fam) y wt
+    eta = cmap lnkf mustart
+    mu = cmap linvf eta
     dev = devResiduals dat mu
 
-glmFit :: Family -> Matrix -> Vector -> Maybe Vector
+glmFit :: Family -> Matrix Double -> Vector Double -> Maybe (Vector Double)
 glmFit fam x y = glm dfltGLMControl <$> equalWeightData fam x y
 
-glm :: GLMControl -> GLMData -> Vector
+glm :: GLMControl -> GLMData -> Vector Double
 glm contr = runLoop contr . take (glmControlMaxIt contr) . glmIterate
 
-glmEvalLink :: Vector -> Vector -> Double
-glmEvalLink a = VU.sum . VU.zipWith(*) a
+glmEvalLink :: Vector Double -> Vector Double -> Double
+glmEvalLink a = sumVector kbn . VS.zipWith(*) a
 
-glmEvalResponse :: Link -> Vector -> Vector -> Double
+glmEvalResponse :: Link -> Vector Double -> Vector Double -> Double
 glmEvalResponse lnk x = linkInv lnk . glmEvalLink x
